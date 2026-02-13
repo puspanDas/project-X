@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import json
 import os
 import re
@@ -23,9 +26,10 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 REPORTS_FILE = os.path.join(DATA_DIR, "reports.json")
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 
-# NumVerify free API (no key needed for http)
+# NumVerify API — free tier 100/month (sign up at numverify.com for free key)
+# Set env var: NUMVERIFY_API_KEY=your_key_here
 NUMVERIFY_URL = "http://apilayer.net/api/validate"
-NUMVERIFY_KEY = "demo"  # Will use phonenumbers lib as primary; NumVerify as secondary
+NUMVERIFY_KEY = os.environ.get("NUMVERIFY_API_KEY", "")
 
 # ---------------------------------------------------------------------------
 # Country code -> name mapping (covers most used codes)
@@ -135,6 +139,29 @@ def get_number_type_label(pn) -> str:
     return type_map.get(ntype, "Unknown")
 
 
+async def get_live_carrier_data(phone_number: str) -> dict | None:
+    """Call NumVerify API for enhanced carrier data.
+    Free tier: 100 lookups/month. Sign up at numverify.com.
+    """
+    if not NUMVERIFY_KEY:
+        return None
+    try:
+        # Remove + prefix for NumVerify
+        clean_number = phone_number.lstrip("+")
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(NUMVERIFY_URL, params={
+                "access_key": NUMVERIFY_KEY,
+                "number": clean_number,
+            })
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("valid"):
+                    return data
+    except Exception:
+        pass
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -161,10 +188,24 @@ async def trace_number(number: str = Query(..., description="Phone number to tra
     formatted_intl = phonenumbers.format_number(pn, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
     formatted_national = phonenumbers.format_number(pn, phonenumbers.PhoneNumberFormat.NATIONAL)
 
-    carrier_name = get_carrier_name(pn)
+    # Offline data from phonenumbers library (original carrier — may not reflect MNP)
+    offline_carrier = get_carrier_name(pn)
     location = get_location(pn)
     timezones = get_timezone(pn)
     line_type = get_number_type_label(pn)
+
+    # Try NumVerify API for accurate current carrier
+    carrier_name = offline_carrier
+    carrier_source = "offline"
+    live_data = await get_live_carrier_data(raw)
+    if live_data:
+        live_carrier = live_data.get("carrier", "").strip()
+        if live_carrier:
+            carrier_name = live_carrier
+            carrier_source = "live"
+        live_type = live_data.get("line_type", "").strip()
+        if live_type:
+            line_type = live_type.capitalize()
 
     # Check community reports
     reports = load_json(REPORTS_FILE)
@@ -184,6 +225,8 @@ async def trace_number(number: str = Query(..., description="Phone number to tra
         "flag": flag,
         "location": location,
         "carrier": carrier_name,
+        "original_carrier": offline_carrier,
+        "carrier_source": carrier_source,  # "live" = Veriphone, "offline" = phonenumbers lib
         "line_type": line_type,
         "timezones": timezones,
         "spam_reports": len(matching_reports),

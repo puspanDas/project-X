@@ -51,8 +51,21 @@ function ResultsPage() {
                         <div className="value">{result.location || 'Unknown'}</div>
                     </div>
                     <div className="result-item">
-                        <div className="label">Carrier</div>
+                        <div className="label">
+                            Carrier
+                            {result.carrier_source === 'live' && (
+                                <span style={{ marginLeft: 8, fontSize: '0.65rem', padding: '2px 8px', background: 'rgba(0,212,170,0.15)', color: 'var(--accent-secondary)', borderRadius: 100, fontWeight: 600 }}>LIVE</span>
+                            )}
+                            {result.carrier_source === 'offline' && (
+                                <span style={{ marginLeft: 8, fontSize: '0.65rem', padding: '2px 8px', background: 'rgba(255,159,67,0.15)', color: 'var(--accent-orange)', borderRadius: 100, fontWeight: 600 }}>OFFLINE</span>
+                            )}
+                        </div>
                         <div className="value">{result.carrier || 'Unknown'}</div>
+                        {result.original_carrier && result.original_carrier !== result.carrier && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                                Originally: {result.original_carrier}
+                            </div>
+                        )}
                     </div>
                     <div className="result-item">
                         <div className="label">Line Type</div>
@@ -69,6 +82,13 @@ function ResultsPage() {
                         </div>
                     </div>
                 </div>
+
+                {/* Carrier accuracy note */}
+                {result.carrier_source === 'offline' && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: 12, fontStyle: 'italic' }}>
+                        ⓘ Carrier shown is based on original number allocation. If ported (MNP), actual carrier may differ.
+                    </div>
+                )}
 
                 {/* Spam Reports */}
                 <div className={`spam-section ${result.spam_reports === 0 ? 'clean' : ''}`}>
