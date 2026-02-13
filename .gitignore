@@ -1,3 +1,7 @@
+# Scripts & Docs (local only)
+gitpush.py
+SYSTEM_FLOW.txt
+
 # Python
 __pycache__/
 *.pyc
