@@ -19,4 +19,16 @@ export async function getHistory() {
   return res.data;
 }
 
+// --- AI Endpoints ---
+
+export async function analyzeNumber(traceData) {
+  const res = await API.post('/api/ai/analyze', { trace_data: traceData });
+  return res.data;
+}
+
+export async function aiChat(message, history = []) {
+  const res = await API.post('/api/ai/chat', { message, history });
+  return res.data;
+}
+
 export default API;

@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { MdTrackChanges } from 'react-icons/md';
+import { MdTrackChanges, MdAutoAwesome } from 'react-icons/md';
 
 function Navbar() {
     return (
@@ -17,6 +17,10 @@ function Navbar() {
                 </NavLink>
                 <NavLink to="/history" className={({ isActive }) => isActive ? 'active' : ''}>
                     History
+                </NavLink>
+                <NavLink to="/ai" className={({ isActive }) => `nav-ai-link ${isActive ? 'active' : ''}`}>
+                    <MdAutoAwesome style={{ fontSize: '0.85rem' }} />
+                    AI
                 </NavLink>
             </div>
         </nav>

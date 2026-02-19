@@ -1,10 +1,29 @@
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { MdSearch, MdReportProblem, MdCheckCircle, MdWarning } from 'react-icons/md';
+import { useState } from 'react';
+import { MdSearch, MdReportProblem, MdCheckCircle, MdWarning, MdAutoAwesome } from 'react-icons/md';
+import { analyzeNumber } from '../api';
 
 function ResultsPage() {
     const location = useLocation();
     const navigate = useNavigate();
     const result = location.state?.result;
+    const [aiResult, setAiResult] = useState(null);
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState('');
+
+    const handleAIAnalysis = async () => {
+        if (aiLoading || aiResult) return;
+        setAiLoading(true);
+        setAiError('');
+        try {
+            const analysis = await analyzeNumber(result);
+            setAiResult(analysis);
+        } catch (err) {
+            setAiError('Failed to run AI analysis. Is the backend running?');
+        } finally {
+            setAiLoading(false);
+        }
+    };
 
     if (!result) {
         return (
@@ -19,6 +38,23 @@ function ResultsPage() {
             </div>
         );
     }
+
+    const getRiskColor = (level) => {
+        switch (level) {
+            case 'Critical': return '#ff4757';
+            case 'High': return '#ff6b6b';
+            case 'Medium': return '#ff9f43';
+            case 'Low': return '#00d4aa';
+            default: return '#8888a8';
+        }
+    };
+
+    const getRiskGradient = (score) => {
+        if (score >= 70) return 'linear-gradient(90deg, #ff4757, #ff6b6b)';
+        if (score >= 45) return 'linear-gradient(90deg, #ff6b6b, #ff9f43)';
+        if (score >= 25) return 'linear-gradient(90deg, #ff9f43, #ffd32a)';
+        return 'linear-gradient(90deg, #00d4aa, #6c63ff)';
+    };
 
     return (
         <div>
@@ -117,6 +153,103 @@ function ResultsPage() {
                         </>
                     )}
                 </div>
+
+                {/* === AI ANALYSIS SECTION === */}
+                {!aiResult && !aiLoading && (
+                    <div style={{ textAlign: 'center', marginTop: 24 }}>
+                        <button
+                            className="ai-analyze-btn"
+                            onClick={handleAIAnalysis}
+                            disabled={aiLoading}
+                        >
+                            <MdAutoAwesome style={{ fontSize: '1.2rem' }} />
+                            <span>Run AI Threat Analysis</span>
+                            <span className="ai-analyze-badge">AI</span>
+                        </button>
+                    </div>
+                )}
+
+                {aiLoading && (
+                    <div className="ai-analysis-loading">
+                        <div className="ai-pulse-ring"></div>
+                        <p>Analyzing threat indicators...</p>
+                    </div>
+                )}
+
+                {aiError && (
+                    <div className="error-message" style={{ marginTop: 20 }}>{aiError}</div>
+                )}
+
+                {aiResult && (
+                    <div className="ai-analysis-card" style={{ animation: 'fadeIn 0.5s ease' }}>
+                        <div className="ai-analysis-header">
+                            <MdAutoAwesome style={{ color: 'var(--accent-primary)', fontSize: '1.3rem' }} />
+                            <span>AI Threat Analysis</span>
+                            <span className="ai-badge-glow">AI</span>
+                            {aiResult.ai_source === 'llm' && (
+                                <span style={{
+                                    fontSize: '0.6rem', padding: '2px 8px',
+                                    background: 'rgba(0, 212, 170, 0.15)', color: '#00d4aa',
+                                    borderRadius: '100px', fontWeight: 700, letterSpacing: '0.5px',
+                                    border: '1px solid rgba(0, 212, 170, 0.2)',
+                                }}>LLM</span>
+                            )}
+                        </div>
+
+                        {/* Risk Meter */}
+                        <div className="ai-risk-meter">
+                            <div className="ai-risk-labels">
+                                <span>Risk Score</span>
+                                <span style={{ color: getRiskColor(aiResult.risk_level), fontWeight: 700, fontSize: '1.5rem' }}>
+                                    {aiResult.risk_score}
+                                    <span style={{ fontSize: '0.9rem', opacity: 0.7 }}>/100</span>
+                                </span>
+                            </div>
+                            <div className="ai-risk-bar-bg">
+                                <div
+                                    className="ai-risk-bar-fill"
+                                    style={{
+                                        width: `${aiResult.risk_score}%`,
+                                        background: getRiskGradient(aiResult.risk_score),
+                                    }}
+                                ></div>
+                            </div>
+                        </div>
+
+                        {/* Risk Level & Threat Type */}
+                        <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                            <span className="ai-risk-badge" style={{ background: getRiskColor(aiResult.risk_level) + '22', color: getRiskColor(aiResult.risk_level), borderColor: getRiskColor(aiResult.risk_level) + '33' }}>
+                                {aiResult.risk_level} Risk
+                            </span>
+                            <span className="ai-threat-badge">
+                                {aiResult.threat_type}
+                            </span>
+                        </div>
+
+                        {/* Analysis Text */}
+                        <div className="ai-analysis-text">
+                            {aiResult.analysis}
+                        </div>
+
+                        {/* Factors */}
+                        {aiResult.factors && aiResult.factors.length > 0 && (
+                            <div className="ai-factors">
+                                <div className="ai-factors-title">Risk Factors</div>
+                                {aiResult.factors.map((f, i) => (
+                                    <div key={i} className="ai-factor-item">
+                                        <span className="ai-factor-dot"></span>
+                                        {f}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Recommendation */}
+                        <div className="ai-recommendation">
+                            {aiResult.recommendation}
+                        </div>
+                    </div>
+                )}
 
                 {/* Actions */}
                 <div className="actions">

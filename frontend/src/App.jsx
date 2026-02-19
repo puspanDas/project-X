@@ -4,6 +4,7 @@ import SearchPage from './pages/SearchPage';
 import ResultsPage from './pages/ResultsPage';
 import ReportPage from './pages/ReportPage';
 import HistoryPage from './pages/HistoryPage';
+import AIInsightsPage from './pages/AIInsightsPage';
 import './index.css';
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
             <Route path="/results" element={<ResultsPage />} />
             <Route path="/report" element={<ReportPage />} />
             <Route path="/history" element={<HistoryPage />} />
+            <Route path="/ai" element={<AIInsightsPage />} />
           </Routes>
         </main>
       </div>

@@ -9,6 +9,9 @@ __pycache__/
 venv/
 .env
 
+# AI Models (large GGUF files)
+backend/models/
+
 # Node
 node_modules/
 dist/

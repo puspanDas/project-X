@@ -291,6 +291,48 @@ async def recent_lookups():
     return history[:20]
 
 
+# ---------------------------------------------------------------------------
+# AI-Powered Endpoints
+# ---------------------------------------------------------------------------
+from ai_service import analyze_number as ai_analyze, chat as ai_chat, get_llm_status
+
+
+class AIAnalyzeRequest(BaseModel):
+    trace_data: dict
+
+
+class AIChatRequest(BaseModel):
+    message: str
+    history: list = []
+
+
+@app.post("/api/ai/analyze")
+async def ai_analyze_endpoint(req: AIAnalyzeRequest):
+    """AI-powered threat analysis for a traced phone number."""
+    trace_data = req.trace_data
+
+    # Fetch matching reports for deeper analysis
+    reports = load_json(REPORTS_FILE)
+    e164 = trace_data.get("e164", "")
+    matching_reports = [r for r in reports if r.get("number") == e164] if e164 else []
+
+    result = ai_analyze(trace_data, matching_reports)
+    return result
+
+
+@app.post("/api/ai/chat")
+async def ai_chat_endpoint(req: AIChatRequest):
+    """AI safety chatbot — ask questions about phone scams, safety tips, etc."""
+    result = ai_chat(req.message, req.history)
+    return result
+
+
+@app.get("/api/ai/status")
+async def ai_model_status():
+    """Check the current LLM model status."""
+    return get_llm_status()
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
