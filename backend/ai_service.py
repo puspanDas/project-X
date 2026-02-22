@@ -106,8 +106,10 @@ def _llm_generate(system_prompt: str, user_prompt: str, max_tokens: int = 512) -
 
 
 # ---------------------------------------------------------------------------
-# Country risk tiers (based on known telecom fraud hotspots)
+# Risk Data Tables — replaces scattered if/elif/else chains
 # ---------------------------------------------------------------------------
+
+# Country risk tiers (based on known telecom fraud hotspots)
 HIGH_RISK_COUNTRIES = {
     "NG", "GH", "CI", "CM", "SN",  # West Africa
     "PK", "BD", "IN",              # South Asia (high volume)
@@ -122,9 +124,7 @@ MEDIUM_RISK_COUNTRIES = {
     "RO", "BG", "AL",             # Balkans
 }
 
-# ---------------------------------------------------------------------------
 # Threat keywords in report descriptions
-# ---------------------------------------------------------------------------
 SEVERE_KEYWORDS = [
     "bank", "account", "password", "ssn", "social security", "irs", "fbi",
     "arrest", "warrant", "court", "wire transfer", "bitcoin", "crypto",
@@ -139,124 +139,266 @@ MODERATE_KEYWORDS = [
     "debt", "loan", "credit", "rate", "lower",
 ]
 
-# ---------------------------------------------------------------------------
 # Report type severity weights
-# ---------------------------------------------------------------------------
 REPORT_SEVERITY = {
-    "fraud": 30,
-    "scam": 28,
-    "phishing": 25,
-    "harassment": 20,
-    "robocall": 12,
-    "telemarketer": 10,
-    "spam": 8,
-    "other": 5,
+    "fraud": 30, "scam": 28, "phishing": 25,
+    "harassment": 20, "robocall": 12, "telemarketer": 10,
+    "spam": 8, "other": 5,
 }
 
+# Spam report count → (points, message_template)
+# Checked in order; first match wins (highest threshold first).
+SPAM_THRESHOLDS = [
+    (10, 35, "Extremely high report volume ({count} reports)"),
+    (5,  25, "High number of community reports ({count})"),
+    (2,  15, "Multiple community reports ({count})"),
+    (1,   8, "1 community report filed"),
+]
+
+# Line type → (score_delta, factor_message)
+LINE_TYPE_SCORES = {
+    "voip":         (15,  "VoIP number — commonly used for spoofing and scam calls"),
+    "premium rate": (12,  "Premium rate number — may incur unexpected charges"),
+    "toll-free":    (5,   "Toll-free number — sometimes used by telemarketers"),
+}
+LINE_TYPE_LANDLINE = (-3, "Landline number — generally lower risk")
+
+# Risk-level thresholds — checked top-down, first match wins.
+RISK_LEVELS = [(70, "Critical"), (45, "High"), (25, "Medium"), (0, "Low")]
+
+# Threat type detection — ordered list of (set_of_report_types, label).
+THREAT_TYPE_MAP = [
+    ({"fraud", "phishing"}, "Fraud / Phishing"),
+    ({"scam"},              "Scam"),
+    ({"harassment"},        "Harassment"),
+    ({"robocall", "telemarketer"}, "Telemarketing"),
+    ({"spam"},              "Spam"),
+]
+
+# Risk-level openers for rule-based analysis
+RISK_OPENERS = {
+    "Critical": "⚠️ This number ({number}) shows strong indicators of malicious activity.",
+    "High":     "This number ({number}) has several concerning risk factors.",
+    "Medium":   "This number ({number}) has some risk indicators worth noting.",
+    "Low":      "This number ({number}) appears to be relatively safe.",
+}
+
+# Risk-level recommendations
+RECOMMENDATIONS = {
+    "Critical": (
+        "🚫 Do NOT answer or return calls from this number. "
+        "Block it immediately on your device. If you've shared any personal information, "
+        "contact your bank and monitor your accounts. Consider filing a report with local authorities."
+    ),
+    "High": (
+        "⚠️ Exercise extreme caution with this number. "
+        "Do not share personal information if they contact you. "
+        "Block the number and report it if you receive suspicious calls."
+    ),
+    "Medium": (
+        "⚡ Be cautious when interacting with this number. "
+        "Verify the caller's identity before sharing any information. "
+        "If unsolicited, consider blocking and reporting."
+    ),
+    "Low": (
+        "✅ This number appears safe based on available data. "
+        "As always, never share sensitive personal information over the phone "
+        "unless you initiated the call to a verified number."
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
+# Scoring Helpers
+# ---------------------------------------------------------------------------
+
+def _score_spam_reports(spam_count: int) -> tuple[int, list[str]]:
+    """Score based on community spam report volume."""
+    for threshold, points, msg_template in SPAM_THRESHOLDS:
+        if spam_count >= threshold:
+            return points, [msg_template.format(count=spam_count)]
+    return 0, []
+
+
+def _score_report_contents(reports: list) -> tuple[int, list[str]]:
+    """Score based on individual report types and keyword analysis."""
+    score = 0
+    factors = []
+    type_score_total = 0
+
+    for report in reports:
+        rtype = report.get("type", "other").lower()
+        type_score_total += REPORT_SEVERITY.get(rtype, 5)
+
+        desc = report.get("description", "").lower()
+
+        # Check severe keywords (only first match per report)
+        if any(kw in desc for kw in SEVERE_KEYWORDS):
+            matched = next(kw for kw in SEVERE_KEYWORDS if kw in desc)
+            score += 5
+            factors.append(f"Severe keyword detected: '{matched}' in report")
+
+        # Check moderate keywords (only first match per report)
+        elif any(kw in desc for kw in MODERATE_KEYWORDS):
+            score += 2
+
+    if type_score_total > 0:
+        score += min(type_score_total, 20)
+
+    return score, factors
+
+
+def _score_validity(trace_data: dict) -> tuple[int, list[str]]:
+    """Score based on number validity."""
+    if not trace_data.get("valid", True):
+        return 15, ["Number flagged as invalid/not active"]
+    if not trace_data.get("possible", True):
+        return 10, ["Number format is not possible for this region"]
+    return 0, []
+
+
+def _score_line_type(trace_data: dict) -> tuple[int, list[str]]:
+    """Score based on the line type (VoIP, premium, toll-free, landline)."""
+    line_type = (trace_data.get("line_type") or "").lower()
+
+    if line_type in LINE_TYPE_SCORES:
+        points, msg = LINE_TYPE_SCORES[line_type]
+        return points, [msg]
+
+    if "landline" in line_type:
+        points, msg = LINE_TYPE_LANDLINE
+        return points, [msg]
+
+    return 0, []
+
+
+def _score_country(trace_data: dict) -> tuple[int, list[str]]:
+    """Score based on country risk tier."""
+    country_code = trace_data.get("country_code", "")
+    country_name = trace_data.get("country_name", country_code or "Unknown")
+
+    if country_code in HIGH_RISK_COUNTRIES:
+        return 15, [f"Originates from high-risk telecom fraud region ({country_name})"]
+    if country_code in MEDIUM_RISK_COUNTRIES:
+        return 8, [f"Originates from medium-risk region ({country_name})"]
+
+    return 0, [f"Country risk: normal ({country_name})"]
+
+
+def _score_carrier(trace_data: dict) -> tuple[int, list[str]]:
+    """Score based on carrier information."""
+    carrier = (trace_data.get("carrier") or "").lower()
+
+    if not carrier or carrier == "unknown":
+        return 10, ["Carrier is unknown — may indicate a virtual or disposable number"]
+
+    virtual_indicators = ("virtual", "voip", "internet")
+    if any(indicator in carrier for indicator in virtual_indicators):
+        return 8, [f"Virtual/internet-based carrier detected: {trace_data.get('carrier')}"]
+
+    return 0, []
+
+
+def _score_porting(trace_data: dict) -> tuple[int, list[str]]:
+    """Score based on number porting history."""
+    original = trace_data.get("original_carrier", "")
+    current = trace_data.get("carrier", "")
+
+    if original and current and original != current and current.lower() != "unknown":
+        return 5, [f"Number was ported from {original} to {current}"]
+
+    return 0, []
+
+
+# ---------------------------------------------------------------------------
+# Core Analysis Functions
+# ---------------------------------------------------------------------------
+
+def _determine_risk_level(score: int) -> str:
+    """Map a numeric score to a risk level string."""
+    return next(level for threshold, level in RISK_LEVELS if score >= threshold)
+
+
+def _determine_threat_type(trace_data: dict, reports: list, score: int) -> str:
+    """Classify the threat type from report types and trace data."""
+    report_types = {r.get("type", "").lower() for r in reports}
+
+    # Check ordered threat map
+    for type_set, label in THREAT_TYPE_MAP:
+        if report_types & type_set:
+            return label
+
+    # Fallback heuristics based on trace data
+    line_type = (trace_data.get("line_type") or "").lower()
+    if line_type == "voip" and score >= 30:
+        return "Suspicious VoIP"
+    if line_type == "premium rate":
+        return "Premium Rate"
+    if score >= 45:
+        return "Suspicious"
+    if score >= 25:
+        return "Potentially Unwanted"
+    return "Clean"
+
+
+def _generate_analysis(trace_data: dict, factors: list, risk_level: str, score: int) -> str:
+    """Fallback rule-based analysis text."""
+    number = trace_data.get("formatted_international", trace_data.get("number", "Unknown"))
+    country = trace_data.get("country_name", "Unknown")
+    carrier = trace_data.get("carrier", "Unknown")
+    line_type = trace_data.get("line_type", "Unknown")
+
+    opener = RISK_OPENERS.get(risk_level, RISK_OPENERS["Low"]).format(number=number)
+
+    details = f"It is a {line_type} number from {country}"
+    if carrier and carrier != "Unknown":
+        details += f", operated by {carrier}"
+    details += "."
+
+    key_factors = (
+        " Key findings: " + "; ".join(factors[:3]) + "."
+        if factors
+        else " No significant risk factors detected."
+    )
+
+    return f"{opener} {details}{key_factors}"
+
+
+def _generate_recommendation(risk_level: str, threat_type: str, trace_data: dict) -> str:
+    """Fallback rule-based recommendation text."""
+    return RECOMMENDATIONS.get(risk_level, RECOMMENDATIONS["Low"])
+
+
+# ---------------------------------------------------------------------------
+# Main Analysis Entry Point
+# ---------------------------------------------------------------------------
 
 def analyze_number(trace_data: dict, reports: list) -> dict:
     """
     Hybrid AI analysis: rule-based scoring + LLM-generated insights.
     """
+    # Collect scores from each independent factor
+    scoring_functions = [
+        lambda: _score_spam_reports(trace_data.get("spam_reports", 0)),
+        lambda: _score_report_contents(reports),
+        lambda: _score_validity(trace_data),
+        lambda: _score_line_type(trace_data),
+        lambda: _score_country(trace_data),
+        lambda: _score_carrier(trace_data),
+        lambda: _score_porting(trace_data),
+    ]
+
     score = 0
     factors = []
+    for fn in scoring_functions:
+        pts, fctrs = fn()
+        score += pts
+        factors.extend(fctrs)
 
-    # --- Factor 1: Community reports (0-35 points) ---
-    spam_count = trace_data.get("spam_reports", 0)
-    if spam_count >= 10:
-        score += 35
-        factors.append(f"Extremely high report volume ({spam_count} reports)")
-    elif spam_count >= 5:
-        score += 25
-        factors.append(f"High number of community reports ({spam_count})")
-    elif spam_count >= 2:
-        score += 15
-        factors.append(f"Multiple community reports ({spam_count})")
-    elif spam_count == 1:
-        score += 8
-        factors.append("1 community report filed")
-
-    report_type_scores = 0
-    for r in reports:
-        rtype = r.get("type", "other").lower()
-        report_type_scores += REPORT_SEVERITY.get(rtype, 5)
-        desc = r.get("description", "").lower()
-        for kw in SEVERE_KEYWORDS:
-            if kw in desc:
-                score += 5
-                factors.append(f"Severe keyword detected: '{kw}' in report")
-                break
-        for kw in MODERATE_KEYWORDS:
-            if kw in desc:
-                score += 2
-                break
-
-    if report_type_scores > 0:
-        score += min(report_type_scores, 20)
-
-    # --- Factor 2: Number validity (0-15 points) ---
-    if not trace_data.get("valid", True):
-        score += 15
-        factors.append("Number flagged as invalid/not active")
-    elif not trace_data.get("possible", True):
-        score += 10
-        factors.append("Number format is not possible for this region")
-
-    # --- Factor 3: Line type analysis (0-15 points) ---
-    line_type = (trace_data.get("line_type") or "").lower()
-    if line_type == "voip":
-        score += 15
-        factors.append("VoIP number — commonly used for spoofing and scam calls")
-    elif line_type == "premium rate":
-        score += 12
-        factors.append("Premium rate number — may incur unexpected charges")
-    elif line_type == "toll-free":
-        score += 5
-        factors.append("Toll-free number — sometimes used by telemarketers")
-    elif "landline" in line_type:
-        score -= 3
-        factors.append("Landline number — generally lower risk")
-
-    # --- Factor 4: Country risk (0-15 points) ---
-    country_code = trace_data.get("country_code", "")
-    if country_code in HIGH_RISK_COUNTRIES:
-        score += 15
-        factors.append(f"Originates from high-risk telecom fraud region ({trace_data.get('country_name', country_code)})")
-    elif country_code in MEDIUM_RISK_COUNTRIES:
-        score += 8
-        factors.append(f"Originates from medium-risk region ({trace_data.get('country_name', country_code)})")
-    else:
-        factors.append(f"Country risk: normal ({trace_data.get('country_name', 'Unknown')})")
-
-    # --- Factor 5: Carrier analysis (0-10 points) ---
-    carrier = (trace_data.get("carrier") or "").lower()
-    if carrier == "unknown" or not carrier:
-        score += 10
-        factors.append("Carrier is unknown — may indicate a virtual or disposable number")
-    elif "virtual" in carrier or "voip" in carrier or "internet" in carrier:
-        score += 8
-        factors.append(f"Virtual/internet-based carrier detected: {trace_data.get('carrier')}")
-
-    # --- Factor 6: Number porting (0-5 points) ---
-    original = trace_data.get("original_carrier", "")
-    current = trace_data.get("carrier", "")
-    if original and current and original != current and current.lower() != "unknown":
-        score += 5
-        factors.append(f"Number was ported from {original} to {current}")
-
-    # Clamp
+    # Clamp to 0-100
     score = max(0, min(100, score))
 
-    # Risk level
-    if score >= 70:
-        risk_level = "Critical"
-    elif score >= 45:
-        risk_level = "High"
-    elif score >= 25:
-        risk_level = "Medium"
-    else:
-        risk_level = "Low"
-
+    risk_level = _determine_risk_level(score)
     threat_type = _determine_threat_type(trace_data, reports, score)
 
     # --- Try LLM for analysis + recommendation ---
@@ -271,7 +413,7 @@ def analyze_number(trace_data: dict, reports: list) -> dict:
         f"Valid: {trace_data.get('valid', 'Unknown')}\n"
         f"Risk score: {score}/100 ({risk_level})\n"
         f"Threat type: {threat_type}\n"
-        f"Spam reports: {spam_count}\n"
+        f"Spam reports: {trace_data.get('spam_reports', 0)}\n"
         f"Risk factors: {'; '.join(factors[:4])}\n\n"
         f"Write a 2-3 sentence security analysis of this phone number, "
         f"followed by a specific safety recommendation. Be concise."
@@ -288,7 +430,6 @@ def analyze_number(trace_data: dict, reports: list) -> dict:
     )
 
     if llm_result:
-        # Split LLM output into analysis and recommendation
         parts = llm_result.split("\n\n", 1)
         llm_analysis = parts[0].strip()
         llm_recommendation = parts[1].strip() if len(parts) > 1 else None
@@ -308,87 +449,6 @@ def analyze_number(trace_data: dict, reports: list) -> dict:
         "model": MODEL_FILE if llm_analysis else None,
         "analyzed_at": datetime.now(timezone.utc).isoformat(),
     }
-
-
-def _determine_threat_type(trace_data: dict, reports: list, score: int) -> str:
-    report_types = [r.get("type", "").lower() for r in reports]
-    if "fraud" in report_types or "phishing" in report_types:
-        return "Fraud / Phishing"
-    if "scam" in report_types:
-        return "Scam"
-    if "harassment" in report_types:
-        return "Harassment"
-    if "robocall" in report_types or "telemarketer" in report_types:
-        return "Telemarketing"
-    if "spam" in report_types:
-        return "Spam"
-    line_type = (trace_data.get("line_type") or "").lower()
-    if line_type == "voip" and score >= 30:
-        return "Suspicious VoIP"
-    if line_type == "premium rate":
-        return "Premium Rate"
-    if score >= 45:
-        return "Suspicious"
-    if score >= 25:
-        return "Potentially Unwanted"
-    return "Clean"
-
-
-def _generate_analysis(trace_data: dict, factors: list, risk_level: str, score: int) -> str:
-    """Fallback rule-based analysis."""
-    number = trace_data.get("formatted_international", trace_data.get("number", "Unknown"))
-    country = trace_data.get("country_name", "Unknown")
-    carrier = trace_data.get("carrier", "Unknown")
-    line_type = trace_data.get("line_type", "Unknown")
-
-    if risk_level == "Critical":
-        opener = f"⚠️ This number ({number}) shows strong indicators of malicious activity."
-    elif risk_level == "High":
-        opener = f"This number ({number}) has several concerning risk factors."
-    elif risk_level == "Medium":
-        opener = f"This number ({number}) has some risk indicators worth noting."
-    else:
-        opener = f"This number ({number}) appears to be relatively safe."
-
-    details = f"It is a {line_type} number from {country}"
-    if carrier and carrier != "Unknown":
-        details += f", operated by {carrier}"
-    details += "."
-
-    if factors:
-        key_factors = " Key findings: " + "; ".join(factors[:3]) + "."
-    else:
-        key_factors = " No significant risk factors detected."
-
-    return opener + " " + details + key_factors
-
-
-def _generate_recommendation(risk_level: str, threat_type: str, trace_data: dict) -> str:
-    """Fallback rule-based recommendation."""
-    if risk_level == "Critical":
-        return (
-            "🚫 Do NOT answer or return calls from this number. "
-            "Block it immediately on your device. If you've shared any personal information, "
-            "contact your bank and monitor your accounts. Consider filing a report with local authorities."
-        )
-    elif risk_level == "High":
-        return (
-            "⚠️ Exercise extreme caution with this number. "
-            "Do not share personal information if they contact you. "
-            "Block the number and report it if you receive suspicious calls."
-        )
-    elif risk_level == "Medium":
-        return (
-            "⚡ Be cautious when interacting with this number. "
-            "Verify the caller's identity before sharing any information. "
-            "If unsolicited, consider blocking and reporting."
-        )
-    else:
-        return (
-            "✅ This number appears safe based on available data. "
-            "As always, never share sensitive personal information over the phone "
-            "unless you initiated the call to a verified number."
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -593,6 +653,21 @@ DEFAULT_RESPONSE = (
 )
 
 
+def _match_knowledge_base(msg_lower: str) -> tuple[str, float]:
+    """Find the best matching knowledge base entry. Returns (response, confidence)."""
+    best_score = 0
+    best_response = DEFAULT_RESPONSE
+
+    for entry in KNOWLEDGE_BASE:
+        score = sum(len(p) for p in entry["patterns"] if p in msg_lower)
+        if score > best_score:
+            best_score = score
+            best_response = entry["response"]
+
+    confidence = min(best_score / 10, 1.0)
+    return best_response, confidence
+
+
 def chat(message: str, history: list = None) -> dict:
     """
     Hybrid chatbot: tries LLM first, falls back to knowledge base pattern matching.
@@ -616,21 +691,11 @@ def chat(message: str, history: list = None) -> dict:
         }
 
     # --- Fallback: pattern matching ---
-    best_score = 0
-    best_response = DEFAULT_RESPONSE
-
-    for entry in KNOWLEDGE_BASE:
-        score = 0
-        for pattern in entry["patterns"]:
-            if pattern in msg_lower:
-                score += len(pattern)
-        if score > best_score:
-            best_score = score
-            best_response = entry["response"]
+    response, confidence = _match_knowledge_base(msg_lower)
 
     return {
-        "response": best_response,
-        "confidence": min(best_score / 10, 1.0),
+        "response": response,
+        "confidence": confidence,
         "ai_source": "rule-based",
         "model": None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
