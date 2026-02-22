@@ -1,6 +1,6 @@
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { useState } from 'react';
-import { MdSearch, MdReportProblem, MdCheckCircle, MdWarning, MdAutoAwesome } from 'react-icons/md';
+import { useState, useEffect } from 'react';
+import { LuSearch, LuTriangleAlert, LuCheck, LuSparkles } from 'react-icons/lu';
 import { analyzeNumber } from '../api';
 
 function ResultsPage() {
@@ -19,11 +19,35 @@ function ResultsPage() {
             const analysis = await analyzeNumber(result);
             setAiResult(analysis);
         } catch (err) {
+            console.error("AI Analysis Error:", err);
             setAiError('Failed to run AI analysis. Is the backend running?');
         } finally {
             setAiLoading(false);
         }
     };
+
+    useEffect(() => {
+        let themeClass = '';
+
+        if (aiResult) {
+            const risk = aiResult.risk_level?.toLowerCase() || '';
+            const score = aiResult.risk_score || 0;
+            if (risk === 'critical' || score >= 90) themeClass = 'theme-critical';
+            else if (risk === 'high' || score >= 70) themeClass = 'theme-danger';
+            else if (risk === 'medium' || score >= 40) themeClass = 'theme-warning';
+            else themeClass = 'theme-safe';
+        } else if (result) {
+            if (result.spam_reports > 5) themeClass = 'theme-danger';
+            else if (result.spam_reports > 0) themeClass = 'theme-warning';
+            else themeClass = 'theme-safe';
+        }
+
+        if (themeClass) document.body.className = themeClass;
+
+        return () => {
+            document.body.className = '';
+        };
+    }, [result, aiResult]);
 
     if (!result) {
         return (
@@ -32,7 +56,7 @@ function ResultsPage() {
                 <p>No results to display. Go back and trace a number.</p>
                 <div className="actions" style={{ marginTop: 20 }}>
                     <button className="btn-outline" onClick={() => navigate('/')}>
-                        <MdSearch /> Search a Number
+                        <LuSearch /> Search a Number
                     </button>
                 </div>
             </div>
@@ -67,11 +91,11 @@ function ResultsPage() {
                 <div style={{ textAlign: 'center', marginBottom: 20 }}>
                     {result.valid ? (
                         <span className="validity-badge valid">
-                            <MdCheckCircle /> Valid Number
+                            <LuCheck /> Valid Number
                         </span>
                     ) : (
                         <span className="validity-badge invalid">
-                            <MdWarning /> Invalid / Not Active
+                            <LuTriangleAlert /> Invalid / Not Active
                         </span>
                     )}
                 </div>
@@ -162,7 +186,7 @@ function ResultsPage() {
                             onClick={handleAIAnalysis}
                             disabled={aiLoading}
                         >
-                            <MdAutoAwesome style={{ fontSize: '1.2rem' }} />
+                            <LuSparkles style={{ fontSize: '1.2rem' }} />
                             <span>Run AI Threat Analysis</span>
                             <span className="ai-analyze-badge">AI</span>
                         </button>
@@ -183,7 +207,7 @@ function ResultsPage() {
                 {aiResult && (
                     <div className="ai-analysis-card" style={{ animation: 'fadeIn 0.5s ease' }}>
                         <div className="ai-analysis-header">
-                            <MdAutoAwesome style={{ color: 'var(--accent-primary)', fontSize: '1.3rem' }} />
+                            <LuSparkles style={{ color: 'var(--accent-primary)', fontSize: '1.3rem' }} />
                             <span>AI Threat Analysis</span>
                             <span className="ai-badge-glow">AI</span>
                             {aiResult.ai_source === 'llm' && (
@@ -254,14 +278,14 @@ function ResultsPage() {
                 {/* Actions */}
                 <div className="actions">
                     <button className="btn-outline" onClick={() => navigate('/')}>
-                        <MdSearch /> Search Another
+                        <LuSearch /> Search Another
                     </button>
                     <Link
                         to="/report"
                         state={{ number: result.e164 }}
                         className="btn-accent"
                     >
-                        <MdReportProblem /> Report This Number
+                        <LuTriangleAlert /> Report This Number
                     </Link>
                 </div>
             </div>

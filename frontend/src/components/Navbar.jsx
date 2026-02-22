@@ -1,11 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { MdTrackChanges, MdAutoAwesome } from 'react-icons/md';
+import { LuTarget, LuSparkles } from 'react-icons/lu';
 
 function Navbar() {
     return (
         <nav className="navbar">
             <NavLink to="/" className="navbar-brand">
-                <MdTrackChanges className="brand-icon" />
+                <LuTarget className="brand-icon" />
                 PhoneTracer
             </NavLink>
             <div className="navbar-links">
@@ -19,7 +19,7 @@ function Navbar() {
                     History
                 </NavLink>
                 <NavLink to="/ai" className={({ isActive }) => `nav-ai-link ${isActive ? 'active' : ''}`}>
-                    <MdAutoAwesome style={{ fontSize: '0.85rem' }} />
+                    <LuSparkles style={{ fontSize: '0.85rem' }} />
                     AI
                 </NavLink>
             </div>

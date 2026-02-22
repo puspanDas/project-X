@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { MdAutoAwesome, MdSend, MdSmartToy, MdPerson } from 'react-icons/md';
+import { LuSparkles, LuSend, LuBot, LuUser } from 'react-icons/lu';
 import { aiChat } from '../api';
 
 const SUGGESTION_CHIPS = [
@@ -40,6 +40,7 @@ function AIInsightsPage() {
             const res = await aiChat(text.trim(), messages);
             setMessages(prev => [...prev, { role: 'ai', text: res.response }]);
         } catch (err) {
+            console.error("AI Chat Error:", err);
             setMessages(prev => [...prev, { role: 'ai', text: "❌ Sorry, something went wrong. Please try again." }]);
         } finally {
             setLoading(false);
@@ -68,7 +69,7 @@ function AIInsightsPage() {
             {/* Hero */}
             <div className="ai-hero">
                 <div className="ai-hero-icon">
-                    <MdAutoAwesome />
+                    <LuSparkles />
                 </div>
                 <h1 className="ai-hero-title">AI Safety Assistant</h1>
                 <p className="ai-hero-subtitle">
@@ -84,7 +85,7 @@ function AIInsightsPage() {
                     {messages.map((msg, i) => (
                         <div key={i} className={`ai-message ${msg.role}`} style={{ animationDelay: `${i * 0.05}s` }}>
                             <div className="ai-message-avatar">
-                                {msg.role === 'ai' ? <MdSmartToy /> : <MdPerson />}
+                                {msg.role === 'ai' ? <LuBot /> : <LuUser />}
                             </div>
                             <div
                                 className="ai-message-bubble"
@@ -94,7 +95,7 @@ function AIInsightsPage() {
                     ))}
                     {loading && (
                         <div className="ai-message ai">
-                            <div className="ai-message-avatar"><MdSmartToy /></div>
+                            <div className="ai-message-avatar"><LuBot /></div>
                             <div className="ai-message-bubble">
                                 <div className="ai-typing">
                                     <span></span><span></span><span></span>
@@ -132,7 +133,7 @@ function AIInsightsPage() {
                         disabled={loading}
                     />
                     <button className="ai-send-btn" type="submit" disabled={loading || !input.trim()}>
-                        <MdSend />
+                        <LuSend />
                     </button>
                 </form>
             </div>

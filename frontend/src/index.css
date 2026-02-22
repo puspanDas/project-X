@@ -1,26 +1,62 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 :root {
-  --bg-primary: #0a0a1a;
-  --bg-secondary: #12122a;
-  --glass-bg: rgba(255, 255, 255, 0.04);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  /* Slate/professional dark mode default */
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.06);
   --glass-hover: rgba(255, 255, 255, 0.08);
-  --accent-primary: #6c63ff;
-  --accent-secondary: #00d4aa;
-  --accent-warning: #ff6b6b;
-  --accent-orange: #ff9f43;
-  --text-primary: #e8e8f0;
-  --text-secondary: #8888a8;
-  --text-muted: #55556a;
-  --gradient-1: linear-gradient(135deg, #6c63ff, #00d4aa);
-  --gradient-2: linear-gradient(135deg, #ff6b6b, #ff9f43);
-  --gradient-3: linear-gradient(135deg, #6c63ff, #a855f7);
-  --shadow-glow: 0 0 40px rgba(108, 99, 255, 0.15);
+
+  /* Default Accents */
+  --theme-color-1: #6366f1;
+  --theme-color-2: #2dd4bf;
+
+  --accent-primary: var(--theme-color-1);
+  --accent-secondary: var(--theme-color-2);
+  --accent-warning: #f43f5e;
+  --accent-orange: #f59e0b;
+  --accent-safe: #10b981;
+
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --gradient-1: linear-gradient(135deg, var(--theme-color-1), var(--theme-color-2));
+  --gradient-2: linear-gradient(135deg, var(--accent-warning), var(--accent-orange));
+  --gradient-3: linear-gradient(135deg, var(--theme-color-1), #8b5cf6);
+  --shadow-glow: 0 8px 32px rgba(99, 102, 241, 0.15);
+
   --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 28px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+
+/* Theme Classes */
+body.theme-safe {
+  --theme-color-1: #10b981;
+  --theme-color-2: #34d399;
+  --shadow-glow: 0 8px 32px rgba(16, 185, 129, 0.15);
+}
+
+body.theme-warning {
+  --theme-color-1: #f59e0b;
+  --theme-color-2: #fbbf24;
+  --shadow-glow: 0 8px 32px rgba(245, 158, 11, 0.15);
+}
+
+body.theme-danger {
+  --theme-color-1: #ef4444;
+  --theme-color-2: #f43f5e;
+  --shadow-glow: 0 8px 32px rgba(239, 68, 68, 0.15);
+}
+
+body.theme-critical {
+  --theme-color-1: #b91c1c;
+  --theme-color-2: #ef4444;
+  --bg-primary: #1f0f0f;
+  --shadow-glow: 0 8px 32px rgba(185, 28, 28, 0.3);
 }
 
 * {
@@ -64,7 +100,7 @@ body {
 .orb-1 {
   width: 500px;
   height: 500px;
-  background: var(--accent-primary);
+  background: var(--theme-color-1);
   top: -10%;
   left: -5%;
   animation-duration: 20s;
@@ -73,7 +109,7 @@ body {
 .orb-2 {
   width: 400px;
   height: 400px;
-  background: var(--accent-secondary);
+  background: var(--theme-color-2);
   bottom: -10%;
   right: -5%;
   animation-duration: 25s;
@@ -83,7 +119,8 @@ body {
 .orb-3 {
   width: 350px;
   height: 350px;
-  background: #a855f7;
+  background: var(--theme-color-1);
+  opacity: 0.3;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);

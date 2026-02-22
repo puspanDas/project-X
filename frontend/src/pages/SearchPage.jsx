@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MdSearch, MdMyLocation } from 'react-icons/md';
+import { LuMapPin } from 'react-icons/lu';
 import { traceNumber } from '../api';
 
 const COUNTRY_CODES = [
@@ -97,7 +97,7 @@ function SearchPage() {
                             </>
                         ) : (
                             <>
-                                <MdMyLocation />
+                                <LuMapPin />
                                 Trace
                             </>
                         )}

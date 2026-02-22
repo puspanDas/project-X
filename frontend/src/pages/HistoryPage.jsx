@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MdHistory, MdRefresh } from 'react-icons/md';
+import { LuHistory, LuRefreshCw } from 'react-icons/lu';
 import { getHistory, traceNumber } from '../api';
 
 function HistoryPage() {
@@ -57,11 +57,11 @@ function HistoryPage() {
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                 <h1 className="page-title" style={{ marginBottom: 0 }}>
-                    <MdHistory className="icon" style={{ color: 'var(--accent-primary)' }} />
+                    <LuHistory className="icon" style={{ color: 'var(--accent-primary)' }} />
                     Recent Lookups
                 </h1>
                 <button className="btn-outline" onClick={fetchHistory} style={{ padding: '8px 16px' }}>
-                    <MdRefresh /> Refresh
+                    <LuRefreshCw /> Refresh
                 </button>
             </div>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { MdReportProblem } from 'react-icons/md';
+import { LuTriangleAlert } from 'react-icons/lu';
 import { reportNumber } from '../api';
 
 const REPORT_TYPES = [
@@ -53,7 +53,7 @@ function ReportPage() {
     return (
         <div>
             <h1 className="page-title">
-                <MdReportProblem className="icon" style={{ color: 'var(--accent-warning)' }} />
+                <LuTriangleAlert className="icon" style={{ color: 'var(--accent-warning)' }} />
                 Report a Number
             </h1>
 
